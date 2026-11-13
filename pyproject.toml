@@ -1,8 +1,8 @@
 
 [project]
-name = "pratham-policy-assistant"
+name = "policy-assistant"
 version = "0.1.0"
-description = "Pratham AI Policy Assistant"
+description = "AI-powered employee policy assistant using RAG"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

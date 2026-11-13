@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
 configure_logging()
 app = FastAPI(
-    title="Pratham AI Policy Assistant",
+    title="Policy Assistant",
     description="AI-powered employee policy assistant using RAG.",
     version="0.1.0",
     lifespan=lifespan,
@@ -37,5 +37,5 @@ app.include_router(chat_router)
 def health_check():
     return {
         "status": "healthy",
-        "application": "Pratham AI Policy Assistant",
+        "application": "Policy Assistant",
     }
