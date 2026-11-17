@@ -24,7 +24,15 @@ from policy_assistant.application.use_cases.ingest_document import (
 )
 from policy_assistant.application.use_cases.query_policy import QueryPolicyUseCase
 from policy_assistant.application.use_cases.delete_document import DeleteDocumentUseCase
-
+from policy_assistant.application.services.output_guardrail import (
+    OutputGuardrail,
+)
+from policy_assistant.application.services.input_guardrail import (
+    InputGuardrail,
+)
+from policy_assistant.application.services.context_guardrail import (
+    ContextGuardrail,
+)
 
 def create_dependencies() -> dict:
     # Runtime directories
@@ -68,12 +76,19 @@ def create_dependencies() -> dict:
         vector_store=vector_store,
     )
 
+    output_guardrail = OutputGuardrail()
+    input_guardrail = InputGuardrail()
+    context_guardrail = ContextGuardrail()
+
     query_use_case = QueryPolicyUseCase(
         embedding_provider=embedding_provider,
         vector_store=vector_store,
         document_repository=document_repository,
         llm_provider=llm_provider,
-        similarity_threshold=0.65,
+        input_guardrail=input_guardrail,
+        output_guardrail=output_guardrail,
+        context_guardrail=context_guardrail,
+        similarity_threshold=0.40,
         top_k=5,
     )
 

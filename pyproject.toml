@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "pypdf>=7.0.1",
     "python-multipart>=0.0.33",
+    "reportlab>=5.1.0",
     "sentence-transformers>=6.3.0",
     "tiktoken>=0.14.0",
     "uvicorn>=0.54.0",

@@ -1,3 +1,4 @@
+
 from policy_assistant.domain.interfaces.document_repository import DocumentRepository
 from policy_assistant.domain.interfaces.embedding_provider import EmbeddingProvider
 from policy_assistant.domain.interfaces.llm_provider import LLMProvider
@@ -6,6 +7,15 @@ from policy_assistant.domain.interfaces.vector_store import VectorStore
 from policy_assistant.application.use_cases.query_result import (
     QueryPolicyResult,
     SourceReference,
+)
+from policy_assistant.application.services.output_guardrail import (
+    OutputGuardrail,
+)
+from policy_assistant.application.services.input_guardrail import (
+    InputGuardrail,
+)
+from policy_assistant.application.services.context_guardrail import (
+    ContextGuardrail,
 )
 
 
@@ -17,6 +27,9 @@ class QueryPolicyUseCase:
         vector_store: VectorStore,
         document_repository: DocumentRepository,
         llm_provider: LLMProvider,
+        output_guardrail: OutputGuardrail,
+        input_guardrail: InputGuardrail,
+        context_guardrail: ContextGuardrail,
         similarity_threshold: float,
         top_k: int = 5,
     ):
@@ -24,26 +37,43 @@ class QueryPolicyUseCase:
         self.vector_store = vector_store
         self.document_repository = document_repository
         self.llm_provider = llm_provider
+        self.output_guardrail = output_guardrail
+        self.input_guardrail = input_guardrail
+        self.context_guardrail = context_guardrail
         self.similarity_threshold = similarity_threshold
         self.top_k = top_k
 
     def execute(self, question: str) -> QueryPolicyResult:
 
-        if not question or not question.strip():
-            raise ValueError("Question cannot be empty.")
+        # 1. Validate user input.
+        guardrail_result = self.input_guardrail.validate(question)
 
+        if not guardrail_result.is_safe:
+            raise ValueError(
+                "Question rejected by input security validation."
+            )
+
+        # 2. Generate query embedding.
         query_embedding = self.embedding_provider.embed_text(question)
 
+        # 3. Retrieve relevant chunks.
         retrieved_chunks = self.vector_store.search(
             query_embedding=query_embedding,
             top_k=self.top_k,
         )
 
+        # 4. Filter chunks using the similarity threshold.
         relevant_chunks = [
             (chunk, score)
             for chunk, score in retrieved_chunks
             if score >= self.similarity_threshold
         ]
+
+        # Diagnostic logging: inspect threshold filtering.
+        print(
+            f"[DEBUG] Chunks after threshold "
+            f"({self.similarity_threshold}): {len(relevant_chunks)}"
+        )
 
         if not relevant_chunks:
             return QueryPolicyResult(
@@ -51,6 +81,7 @@ class QueryPolicyUseCase:
                 sources=[],
             )
 
+        # 5. Validate that retrieved chunks belong to active documents.
         documents = {}
         valid_chunks = []
 
@@ -76,6 +107,30 @@ class QueryPolicyUseCase:
                 sources=[],
             )
 
+        # 6. Validate retrieved chunks using the context guardrail.
+        context_guardrail_result = self.context_guardrail.validate(
+            [chunk for chunk, document in valid_chunks]
+        )
+
+        safe_chunk_ids = {
+            chunk.id
+            for chunk in context_guardrail_result.safe_chunks
+        }
+
+        valid_chunks = [
+            (chunk, document)
+            for chunk, document in valid_chunks
+            if chunk.id in safe_chunk_ids
+        ]
+
+        # Abstain if every retrieved chunk was rejected.
+        if not valid_chunks:
+            return QueryPolicyResult(
+                answer="I couldn't find relevant information in the available policies.",
+                sources=[],
+            )
+
+        # 7. Construct context and source references from safe chunks only.
         context_parts = []
         sources = []
 
@@ -105,10 +160,20 @@ class QueryPolicyUseCase:
 
         context = "\n\n".join(context_parts)
 
+        # 8. Generate answer using the LLM.
         answer = self.llm_provider.generate_answer(
             question=question,
             context=context,
         )
+
+        # 9. Validate the generated answer.
+        guardrail_result = self.output_guardrail.validate(answer)
+
+        if not guardrail_result.is_safe:
+            answer = (
+                "I couldn't provide this response because "
+                "it did not pass security validation."
+            )
 
         return QueryPolicyResult(
             answer=answer,
